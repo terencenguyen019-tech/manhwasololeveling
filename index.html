@@ -187,7 +187,7 @@
                 <div id="ai-locked-msg" style="color:#666; display:none;">Cổng mở vào ngày 3, 6, 9...</div>
                 <div id="ai-upload-area">
                     <div class="upload-zone" onclick="document.getElementById('file-input').click()">
-                        <div id="upload-label" style="color:#aaa; font-weight:bold;">CHỌN 3 ẢNH</div>
+                        <div id="upload-label" style="color:#aaa; font-weight:bold;">CHỌN 3 ẢNH (NGÀY 1-3)</div>
                         <input type="file" id="file-input" multiple accept="image/*" style="display:none" onchange="handleFiles(this.files)">
                     </div>
                     <div id="preview-grid" class="preview-grid"></div>
@@ -312,18 +312,16 @@
         "Học giặt đồ", "Học rửa chén", "Viết sách", "Chat thành người thành công", "Mua đồ <1tr", "Bóng bàn", "Bi lắc", "Phi tiêu"
     ];
 
-    // --- DATA ---
-    let data = JSON.parse(localStorage.getItem('shadowV17_Final_Reborn')) || {
+    let data = JSON.parse(localStorage.getItem('shadowV19_Final_Clean')) || {
         day: 1, water: 0, milk: 0, supp: 0, tasks: {}, gymDone: false, 
         lastDate: new Date().toDateString(),
         rewardClaimed: false, history: [],
         height: '', weightHistory: [], targetBMI: '', apiKey: '',
-        offsetDays: 0, bodyGoal: '', photoTakenToday: false
+        offsetDays: 0
     };
 
     function init() {
         checkAutoNewDay(); renderUI(); loadBMIState(); initAI();
-        if(data.bodyGoal) document.getElementById('body-goal-desc').value = data.bodyGoal;
         setInterval(() => {
             const now = getEffectiveDate();
             const options = { weekday: 'long', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' };
@@ -343,7 +341,7 @@
     function checkAutoNewDay() { if (data.lastDate !== getEffectiveDate().toDateString()) triggerNewDay(getEffectiveDate().toDateString()); }
     function forceNextDay() { if(confirm("XÁC NHẬN: Tua nhanh đến ngày mai?")) { data.day++; data.offsetDays = (data.offsetDays||0) + 1; resetDailyStats(); data.lastDate = getEffectiveDate().toDateString(); unlockBMI(); save(); alert("Đã du hành đến Ngày " + data.day); location.reload(); } }
     function triggerNewDay(dateStr) { data.day++; resetDailyStats(); data.lastDate = dateStr; unlockBMI(); save(); alert("BÌNH MINH ĐÃ LÊN! NGÀY THỨ " + data.day); location.reload(); }
-    function resetDailyStats() { data.water = 0; data.milk = 0; data.supp = 0; data.tasks = {}; data.gymDone = false; data.rewardClaimed = false; data.photoTakenToday = false; }
+    function resetDailyStats() { data.water = 0; data.milk = 0; data.supp = 0; data.tasks = {}; data.gymDone = false; data.rewardClaimed = false; }
 
     // BMI
     function loadBMIState() {
@@ -384,7 +382,7 @@
     function lockBMI() { document.getElementById('btn-calc-bmi').innerText="ĐÃ CHỐT"; document.getElementById('btn-calc-bmi').disabled=true; }
     function unlockBMI() { document.getElementById('btn-calc-bmi').innerText="TÍNH TOÁN"; document.getElementById('btn-calc-bmi').disabled=false; document.getElementById('weight-input').value=""; document.getElementById('bmi-result-area').style.display='none'; }
 
-    // AI (FIXED LOGIC)
+    // AI
     function initAI() {
         if(data.apiKey) {
             document.getElementById('ai-interface').style.display='block'; document.getElementById('api-setup').style.display='none';
@@ -393,7 +391,6 @@
         } else { document.getElementById('ai-interface').style.display='none'; document.getElementById('api-setup').style.display='block'; }
     }
     function saveApiKey() { data.apiKey=document.getElementById('api-key-input').value; save(); initAI(); }
-    function saveGoalDesc() { data.bodyGoal = document.getElementById('body-goal-desc').value; save(); }
     
     let selectedFiles=[];
     function handleFiles(files) {
@@ -407,47 +404,30 @@
         const btn=document.getElementById('analyze-btn'); const modal=document.getElementById('result-modal');
         const box=document.getElementById('ai-result'); const load=document.getElementById('loading');
         btn.disabled=true; modal.style.display='block'; load.style.display='block'; box.innerHTML="";
-        
-        // PREPARE DATA FOR AI
-        const bmiCtx = JSON.stringify(data.weightHistory.slice(-5));
-        const goalCtx = data.bodyGoal || "Cải thiện vóc dáng tổng thể.";
+        const bmiCtx=JSON.stringify(data.weightHistory.slice(-5));
         
         try {
-            // CONVERT IMAGES TO BASE64
-            const imageParts = await Promise.all(selectedFiles.map(file => new Promise((resolve, reject) => {
+            const imageParts = await Promise.all(selectedFiles.map(file => new Promise((resolve) => {
                 const reader = new FileReader();
-                reader.onloadend = () => {
-                    // Gemini API requires base64 string without the data URL prefix
-                    const base64String = reader.result.split(',')[1]; 
-                    resolve({
-                        inlineData: {
-                            data: base64String,
-                            mimeType: file.type
-                        }
-                    });
-                };
-                reader.onerror = reject;
+                reader.onloadend = () => resolve({
+                    inlineData: {
+                        data: reader.result.split(',')[1],
+                        mimeType: file.type
+                    }
+                });
                 reader.readAsDataURL(file);
             })));
 
-            // CALL GEMINI API
             const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${data.apiKey}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     contents: [{
                         parts: [
-                            { text: `Hệ thống Solo Leveling. Mục tiêu người dùng: "${goalCtx}". Dữ liệu BMI gần đây: ${bmiCtx}. Hãy phân tích các bức ảnh này (đại diện cho tiến trình). Nhận xét cơ bắp, mỡ thừa. So sánh sự thay đổi nếu có. Đưa ra lời khuyên tập luyện và dinh dưỡng ngắn gọn, cực gắt (như một huấn luyện viên nghiêm khắc). Định dạng kết quả bằng Markdown tiếng Việt.` },
+                            { text: `System Solo Leveling. BMI Data: ${bmiCtx}. Target BMI: ${data.targetBMI}. Analyze these 3 photos (Day 1, 2, 3). Critique physique. Give advice based on goal. Output Vietnamese Markdown.` },
                             ...imageParts
                         ]
-                    }],
-                    // SAFETY SETTINGS (Quan trọng để không bị chặn ảnh body)
-                    safetySettings: [
-                        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-                        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-                        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-                        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-                    ]
+                    }]
                 })
             });
 
@@ -459,20 +439,15 @@
             }
 
             if (json.candidates && json.candidates[0].content) {
-                const aiText = json.candidates[0].content.parts[0].text;
-                box.innerHTML = marked.parse(aiText);
+                box.innerHTML = marked.parse(json.candidates[0].content.parts[0].text);
             } else {
-                box.innerText = "AI không phản hồi. (Có thể do ảnh không rõ hoặc lỗi server)";
+                box.innerText = "Lỗi AI: Không có phản hồi.";
             }
-            
-        } catch (e) {
+            btn.disabled = false;
+
+        } catch(e) {
             load.style.display = 'none';
-            box.innerText = "LỖI: " + e.message;
-            // Thêm hướng dẫn nếu lỗi do môi trường
-            if(e.message.includes("Failed to fetch")) {
-                box.innerHTML += "<br><br><strong>Lưu ý:</strong> Bạn cần chạy trên Netlify/GitHub Pages để kết nối API (Lỗi CORS).";
-            }
-        } finally {
+            box.innerText = "Lỗi: " + e.message;
             btn.disabled = false;
         }
     }
@@ -492,10 +467,6 @@
 
         if(data.gymDone) { document.getElementById('gym-status').innerText="HOÀN THÀNH"; document.getElementById('gym-status').style.color="#00ff00"; }
         else { document.getElementById('gym-status').innerText="CHƯA XONG"; document.getElementById('gym-status').style.color="#666"; }
-
-        if(data.photoTakenToday) {
-            // Logic chụp ảnh hàng ngày (nếu cần tích hợp sau này)
-        } 
 
         updateSchedule(); checkProgress();
     }
